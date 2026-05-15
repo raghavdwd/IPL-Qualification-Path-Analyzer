@@ -1,0 +1,20 @@
+{
+  "name": "ipl-win-prediction",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run  --watch index.ts",
+    "start": "bun run index.ts",
+    "typecheck": "bun x tsc --noEmit"
+  },
+  "dependencies": {
+    "grammy": "^1.34.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

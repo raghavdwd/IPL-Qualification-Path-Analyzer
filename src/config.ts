@@ -1,0 +1,30 @@
+/*
+  Central configuration module.
+  Reads all environment variables at startup and exports them as a typed config object.
+  If required keys are missing, the bot will log an error and exit early.
+*/
+
+export const config = {
+  openRouter: {
+    apiKey: process.env.OPENROUTER_API_KEY || "",
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: process.env.LLM_MODEL || "minimax/minimax-m2.5:free",
+  },
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN || "",
+  },
+  cricketApi: {
+    apiKey: process.env.CRICAPI_KEY || "0a8e3c12-a01f-4680-a611-820204a5481f",
+    baseUrl: "https://api.cricapi.com/v1",
+  },
+  session: {
+    maxMessages: 20,
+  },
+};
+
+export function validateConfig(): string[] {
+  const errors: string[] = [];
+  if (!config.telegram.botToken) errors.push("TELEGRAM_BOT_TOKEN is not set");
+  if (!config.openRouter.apiKey) errors.push("OPENROUTER_API_KEY is not set");
+  return errors;
+}
