@@ -14,7 +14,7 @@ export const config = {
     botToken: process.env.TELEGRAM_BOT_TOKEN || "",
   },
   cricketApi: {
-    apiKey: process.env.CRICAPI_KEY || "0a8e3c12-a01f-4680-a611-820204a5481f",
+    apiKey: process.env.CRICAPI_KEY || "",
     baseUrl: "https://api.cricapi.com/v1",
   },
   session: {
@@ -34,5 +34,6 @@ export function validateConfig(): string[] {
   if (!config.telegram.botToken) errors.push("TELEGRAM_BOT_TOKEN is not set");
   if (!config.openRouter.apiKey) errors.push("OPENROUTER_API_KEY is not set");
   if (!config.mongo.uri) errors.push("MONGO_URI is not set");
+  if (!config.cricketApi.apiKey) errors.push("CRICAPI_KEY is not set");
   return errors;
 }
