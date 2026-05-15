@@ -106,6 +106,29 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "get_player_info",
+      description:
+        "Fetch detailed information about a cricket player using their unique player ID. " +
+        "Returns the player's full name, date of birth, role (batsman/bowler/all-rounder), " +
+        "batting style, bowling style, place of birth, and country. " +
+        "Use this when you need player-specific details like their role, style, or background.",
+      parameters: {
+        type: "object",
+        properties: {
+          player_id: {
+            type: "string",
+            description:
+              "The unique player ID (UUID format, e.g. '16592242-ef26-45d9-bf23-fc090...'). " +
+              "You can find player IDs in match details from get_match_detail or get_cric_score results.",
+          },
+        },
+        required: ["player_id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "web_search",
       description:
         "Search the web using Firecrawl. Returns real-time search results with page titles, " +

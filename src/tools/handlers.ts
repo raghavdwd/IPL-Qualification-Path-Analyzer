@@ -201,6 +201,41 @@ export async function handleSearchSeries(args: Record<string, unknown>): Promise
 }
 
 /*
+  Fetch detailed player info from the players_info endpoint.
+  Takes a player_id (UUID) and returns name, role, batting/bowling style, etc.
+*/
+export async function handlePlayerInfo(args: Record<string, unknown>): Promise<string> {
+  const playerId = args.player_id as string;
+
+  if (!playerId) {
+    return JSON.stringify({
+      error: true,
+      message: "player_id parameter is required",
+    });
+  }
+
+  const result = await fetchFromCricketApi("players_info", {
+    id: playerId,
+    offset: "0",
+  });
+
+  if (result.status === "error" || !result.data) {
+    return JSON.stringify({
+      error: true,
+      message: result.reason || "Failed to fetch player info",
+    });
+  }
+
+  const hitsInfo = getHitsSummary(result.info);
+
+  return JSON.stringify({
+    data: result.data,
+    note: "This is the detailed player information including role, batting/bowling style, and country.",
+    apiUsage: hitsInfo,
+  });
+}
+
+/*
   Web search via Firecrawl API.
   Searches the web and returns results with full-page markdown content.
   Useful for live standings, NRR tables, news, and anything the cricket API doesn't cover.
@@ -300,6 +335,7 @@ const handlerRegistry: Record<
   get_cached_results: (args) => handleCachedResults(args),
   get_match_detail: (args) => handleMatchDetail(args),
   search_series: (args) => handleSearchSeries(args),
+  get_player_info: (args) => handlePlayerInfo(args),
   web_search: (args) => handleWebSearch(args),
 };
 
