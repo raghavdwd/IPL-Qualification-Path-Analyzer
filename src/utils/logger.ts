@@ -1,12 +1,6 @@
-/*
-  Simple conditional logger.
-  Only prints messages when NODE_ENV is set to "dev" or "development".
-  In production, all log output is suppressed to avoid noise and
-  prevent accidentally leaking info in server logs.
-*/
+import { env } from "../env";
 
-const IS_DEV =
-  process.env.NODE_ENV === "dev" || process.env.NODE_ENV === "development";
+const IS_DEV = env.nodeEnv === "dev" || env.nodeEnv === "development";
 
 export const logger = {
   log: (...args: unknown[]) => {

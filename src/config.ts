@@ -1,34 +1,30 @@
-/*
-  Central configuration module.
-  Reads all environment variables at startup and exports them as a typed config object.
-  If required keys are missing, the bot will log an error and exit early.
-*/
+import { env } from "./env";
 
 export const config = {
   openRouter: {
-    apiKey: process.env.OPENROUTER_API_KEY || "",
+    apiKey: env.openRouterApiKey,
     baseUrl: "https://openrouter.ai/api/v1",
-    model: process.env.LLM_MODEL || "minimax/minimax-m2.5:free",
+    model: env.llmModel,
   },
   telegram: {
-    botToken: process.env.TELEGRAM_BOT_TOKEN || "",
+    botToken: env.telegramBotToken,
   },
   cricketApi: {
-    apiKey: process.env.CRICAPI_KEY || "",
+    apiKey: env.cricApiKey,
     baseUrl: "https://api.cricapi.com/v1",
   },
   session: {
     maxMessages: 20,
   },
   mongo: {
-    uri: process.env.MONGO_URI || "",
+    uri: env.mongoUri,
     dbName: "ipl_win_prediction",
   },
   http: {
-    port: parseInt(process.env.PORT || "8080", 10),
+    port: parseInt(env.port, 10),
   },
   firecrawl: {
-    apiKey: process.env.FIRECRAWL_API_KEY || "",
+    apiKey: env.firecrawlApiKey,
     baseUrl: "https://api.firecrawl.dev",
   },
 };
