@@ -43,7 +43,6 @@ const LANDING_HTML = () => `<!DOCTYPE html>
 
 /*
   Route registry mapping pathname patterns to their response factories.
-  No if/else chains — just a lookup table.
 */
 const routes: Record<string, { body: () => string; contentType: string }> = {
   "/health": { body: HEALTH_JSON, contentType: "application/json" },

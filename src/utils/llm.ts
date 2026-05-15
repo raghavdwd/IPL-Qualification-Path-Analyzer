@@ -1,57 +1,48 @@
 /*
-  OpenRouter client using the OpenAI-compatible chat completions endpoint.
-  Includes the tool-calling loop that:
+  OpenAI-compatible LLM client using the official OpenAI SDK.
+  
+  Currently configured to talk to OpenRouter (which speaks the OpenAI protocol).
+  Swap baseURL + apiKey to use any OpenAI-compatible provider.
+
+  Exports the tool-calling loop that:
     1. Sends messages + tools to the LLM
     2. If the LLM requests tool calls, executes each one via the provided callback
     3. Feeds tool results back to the LLM
     4. Repeats until the LLM returns a text response or hits the iteration limit
-
-  This keeps the tool dispatch logic in one place so the Telegram bot handler
-  doesn't need to worry about the back-and-forth protocol.
 */
 
+import OpenAI from "openai";
 import { config } from "../config";
 
 /*
-  Represents a single message in the conversation history.
-  This matches the OpenAI chat completion message format used by OpenRouter.
+  Re-export the SDK's canonical message and tool types so downstream code
+  (session storage, tool definitions, bot handler) doesn't depend on a
+  hand-rolled interface that can drift out of sync.
 */
-export interface LlmMessage {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
-  tool_calls?: Array<{
-    id: string;
-    type: "function";
-    function: {
-      name: string;
-      arguments: string;
-    };
-  }>;
-  tool_call_id?: string;
-}
+export type LlmMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+export type ToolDefinition = OpenAI.Chat.Completions.ChatCompletionTool;
 
 /*
-  A tool definition in OpenAI-compatible function-calling format.
-  The LLM uses the name + description to decide when to call it,
-  and the parameters JSON Schema to know what arguments to provide.
+  Single shared client instance.
+  The base URL points at OpenRouter; the extra headers are OpenRouter-specific
+  metadata that shows up in their dashboard analytics.
 */
-export interface ToolDefinition {
-  type: "function";
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  };
-}
-
-const OPENROUTER_URL = `${config.openRouter.baseUrl}/chat/completions`;
+const client = new OpenAI({
+  apiKey: config.openRouter.apiKey,
+  baseURL: config.openRouter.baseUrl,
+  defaultHeaders: {
+    "HTTP-Referer":
+      "https://github.com/raghavdwd/IPL-Qualification-Path-Analyzer.git",
+    "X-Title": "IPL Qualification Path Analyzer",
+  },
+});
 
 /*
   Execute the full tool-calling loop.
 
   Steps:
-    1. Build the request body with messages and tools
-    2. POST to OpenRouter
+    1. Build the request body with messages and tools via the SDK
+    2. POST to the configured provider
     3. Check finish_reason
        - "tool_calls": execute each call via toolExecutor, append results, go to step 2
        - "stop": return the content text
@@ -70,49 +61,17 @@ export async function chatLoop(
   maxIterations = 10,
 ): Promise<string> {
   for (let iteration = 0; iteration < maxIterations; iteration++) {
-    const body: Record<string, unknown> = {
-      model: config.openRouter.model,
-      messages,
-    };
-
     /*
-      Only attach tools array if we actually have tools defined.
+      Only attach the tools array if we have tools defined.
       Some models behave differently when tools are present vs absent.
     */
-    if (tools.length > 0) {
-      body.tools = tools;
-    }
-
-    const response = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.openRouter.apiKey}`,
-        "HTTP-Referer": "https://github.com/raghav/ipl-win-prediction",
-        "X-Title": "IPL Win Prediction Bot",
-      },
-      body: JSON.stringify(body),
+    const response = await client.chat.completions.create({
+      model: config.openRouter.model,
+      messages,
+      tools: tools.length > 0 ? tools : undefined,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return `Sorry, I encountered an error talking to the AI provider: ${response.status} ${response.statusText}\n\n${errorText.slice(0, 500)}`;
-    }
-
-    const data = (await response.json()) as {
-      choices?: Array<{
-        finish_reason?: string;
-        message: {
-          content?: string | null;
-          tool_calls?: Array<{
-            id: string;
-            type: "function";
-            function: { name: string; arguments: string };
-          }>;
-        };
-      }>;
-    };
-    const choice = data.choices?.[0];
+    const choice = response.choices?.[0];
 
     /*
       Defensive check: if the API response is malformed, bail out gracefully.
@@ -125,14 +84,31 @@ export async function chatLoop(
       When finish_reason is "tool_calls", the LLM wants us to run one or more tools.
       The assistant message with tool_calls must be added to the conversation history,
       followed by one "tool" role message per tool result.
+
+      The OpenAI SDK v6 union type includes both standard "function" tool calls and
+      custom tool calls; we filter to only handle function calls here.
     */
     if (choice.finish_reason === "tool_calls" && choice.message.tool_calls) {
-      const assistantMessage: LlmMessage = {
+      const functionCalls = choice.message.tool_calls.filter(
+        (
+          tc,
+        ): tc is OpenAI.Chat.Completions.ChatCompletionMessageToolCall & {
+          type: "function";
+        } => tc.type === "function",
+      );
+
+      messages.push({
         role: "assistant",
-        content: null,
-        tool_calls: choice.message.tool_calls,
-      };
-      messages.push(assistantMessage);
+        content: choice.message.content || null,
+        tool_calls: functionCalls.map((tc) => ({
+          id: tc.id,
+          type: "function" as const,
+          function: {
+            name: tc.function.name,
+            arguments: tc.function.arguments,
+          },
+        })),
+      });
 
       /*
         Execute each tool call sequentially.
@@ -140,9 +116,7 @@ export async function chatLoop(
         We could run them in parallel for speed, but sequential is simpler
         and avoids race conditions with API rate limits.
       */
-      for (const toolCall of choice.message.tool_calls) {
-        if (toolCall.type !== "function") continue;
-
+      for (const toolCall of functionCalls) {
         const name = toolCall.function.name;
         let args: Record<string, unknown> = {};
 
