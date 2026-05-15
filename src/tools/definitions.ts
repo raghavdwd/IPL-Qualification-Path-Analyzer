@@ -103,4 +103,28 @@ export const toolDefinitions: ToolDefinition[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description:
+        "Search the web using Firecrawl. Returns real-time search results with page titles, " +
+        "descriptions, URLs, and full-page markdown content. " +
+        "Use this to get up-to-date information about IPL standings, points tables, " +
+        "net run rates, team news, player injuries, head-to-head records, " +
+        "or any cricket-related information that may not be available through the cricket API. " +
+        "Also useful for general web questions.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description:
+              "The search query. Be specific for best results (e.g. 'IPL 2026 points table standings' or 'RCB net run rate 2026').",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
 ];

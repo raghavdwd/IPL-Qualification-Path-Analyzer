@@ -53,14 +53,14 @@ bot.command("start", async (ctx) => {
   await sessions.resetChat(ctx.chat.id);
   await ctx.reply(
     "🏏 *IPL Qualification Path Analyzer* 🏏\n\n" +
-    "Ask me anything about IPL team qualification chances!\n\n" +
-    "Examples:\n" +
-    "• *Can RCB still qualify for the playoffs?*\n" +
-    "• *What are CSK's remaining matches?*\n" +
-    "• *How many points does MI need to qualify?*\n" +
-    "• *Show me the current standings*\n\n" +
-    "I can see matches from the last ~7 days and next ~7 days.\n" +
-    "Type /reset to start a fresh conversation.",
+      "Ask me anything about IPL team qualification chances!\n\n" +
+      "Examples:\n" +
+      "• *Can RCB still qualify for the playoffs?*\n" +
+      "• *What are CSK's remaining matches?*\n" +
+      "• *How many points does MI need to qualify?*\n" +
+      "• *Show me the current standings*\n\n" +
+      "I can see matches from the last ~7 days and next ~7 days.\n" +
+      "Type /reset to start a fresh conversation.",
     { parse_mode: "Markdown" },
   );
 });

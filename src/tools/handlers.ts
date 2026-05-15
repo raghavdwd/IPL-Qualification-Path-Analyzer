@@ -8,6 +8,7 @@
   The LLM reads this string to decide what to say to the user.
 */
 
+import { config } from "../config";
 import { fetchFromCricketApi, getHitsSummary } from "../utils/cricketApi";
 import { mergeIntoCache, getCachedMatches, getCacheSummary } from "../utils/cache";
 
@@ -200,28 +201,123 @@ export async function handleSearchSeries(args: Record<string, unknown>): Promise
 }
 
 /*
-  Main dispatcher that routes tool call names to the correct handler.
-  This is called by the LLM loop in chatLoop when the model requests a tool execution.
+  Web search via Firecrawl API.
+  Searches the web and returns results with full-page markdown content.
+  Useful for live standings, NRR tables, news, and anything the cricket API doesn't cover.
+*/
+export async function handleWebSearch(args: Record<string, unknown>): Promise<string> {
+  const query = (args.query as string || "").trim();
+
+  if (!query) {
+    return JSON.stringify({
+      error: true,
+      message: "query parameter is required",
+    });
+  }
+
+  if (!config.firecrawl.apiKey) {
+    return JSON.stringify({
+      error: true,
+      message:
+        "Firecrawl API key is not configured. " +
+        "Set FIRECRAWL_API_KEY in your environment variables.",
+    });
+  }
+
+  try {
+    const response = await fetch(`${config.firecrawl.baseUrl}/v1/search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.firecrawl.apiKey}`,
+      },
+      body: JSON.stringify({
+        query,
+        limit: 5,
+        scrapeOptions: {
+          formats: ["markdown"],
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return JSON.stringify({
+        error: true,
+        message: `Firecrawl search failed: HTTP ${response.status}`,
+        details: errorText.slice(0, 500),
+      });
+    }
+
+    const result = (await response.json()) as {
+      success: boolean;
+      data?: Array<{ title?: string; description?: string; url?: string; markdown?: string }>;
+    };
+
+    if (!result.success || !result.data) {
+      return JSON.stringify({
+        error: true,
+        message: "Firecrawl returned no results.",
+      });
+    }
+
+    /*
+      Extract the core fields from each result and truncate markdown
+      to avoid blowing past the LLM's context window.
+    */
+    const results = result.data.map(
+      (item: { title?: string; description?: string; url?: string; markdown?: string }) => ({
+        title: item.title || "",
+        description: item.description || "",
+        url: item.url || "",
+        content: item.markdown ? item.markdown.slice(0, 3000) : "",
+      }),
+    );
+
+    return JSON.stringify({
+      data: results,
+      totalResults: results.length,
+      query,
+    });
+  } catch (error) {
+    return JSON.stringify({
+      error: true,
+      message: `Failed to execute web search: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
+}
+
+/*
+  Handler registry — maps tool names to their handler functions.
+  Adding a new tool means adding one entry here and one definition in definitions.ts.
+  No switch statements, no if/else chains.
+*/
+const handlerRegistry: Record<
+  string,
+  (args: Record<string, unknown>) => Promise<string>
+> = {
+  get_cric_score: (_args) => handleCricScore(),
+  get_cached_results: (args) => handleCachedResults(args),
+  get_match_detail: (args) => handleMatchDetail(args),
+  search_series: (args) => handleSearchSeries(args),
+  web_search: (args) => handleWebSearch(args),
+};
+
+const AVAILABLE_TOOLS = Object.keys(handlerRegistry).join(", ");
+
+/*
+  Look up the tool in the registry and execute it, or return an error.
 */
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<string> {
-  switch (name) {
-    case "get_cric_score":
-      return handleCricScore();
-    case "get_cached_results":
-      return handleCachedResults(args);
-    case "get_match_detail":
-      return handleMatchDetail(args);
-    case "search_series":
-      return handleSearchSeries(args);
-    default:
-      return JSON.stringify({
-        error: true,
-        message:
-          `Unknown tool: "${name}". ` +
-          "Available tools: get_cric_score, get_cached_results, get_match_detail, search_series",
-      });
+  const handler = handlerRegistry[name];
+  if (!handler) {
+    return JSON.stringify({
+      error: true,
+      message: `Unknown tool: "${name}". Available tools: ${AVAILABLE_TOOLS}`,
+    });
   }
+  return handler(args);
 }

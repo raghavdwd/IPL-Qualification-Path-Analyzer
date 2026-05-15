@@ -66,24 +66,17 @@ function saveCache(store: CacheStore): void {
 */
 export function mergeIntoCache(newMatches: CachedMatch[]): void {
   const store = loadCache();
-  const existingIds = new Set(store.matches.map((m) => m.id));
+
+  /*
+    Build a map of id -> match for O(1) lookups instead of scanning with findIndex.
+  */
+  const existing = new Map(store.matches.map((m) => [m.id, m]));
 
   for (const match of newMatches) {
-    if (existingIds.has(match.id)) {
-      /*
-        Update existing match in place (scores might update for live matches).
-        Find the index and replace.
-      */
-      const idx = store.matches.findIndex((m) => m.id === match.id);
-      if (idx !== -1) {
-        store.matches[idx] = match;
-      }
-    } else {
-      store.matches.push(match);
-      existingIds.add(match.id);
-    }
+    existing.set(match.id, match);
   }
 
+  store.matches = Array.from(existing.values());
   store.lastUpdated = new Date().toISOString();
   saveCache(store);
 }

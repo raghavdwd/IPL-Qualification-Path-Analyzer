@@ -13,43 +13,14 @@ import { logger } from "./utils/logger";
 
 const START_TIME = Date.now();
 
-/*
-  Start the HTTP server on the configured port.
-  Uses Bun's built-in server (no express/fastify needed).
-  Returns the server instance so it can be stopped during shutdown.
-*/
-export function startHttpServer() {
-  const server = Bun.serve({
-    port: config.http.port,
-    fetch(request) {
-      const url = new URL(request.url);
+const HEALTH_JSON = () =>
+  JSON.stringify({
+    status: "ok",
+    uptime: Math.floor((Date.now() - START_TIME) / 1000),
+    timestamp: new Date().toISOString(),
+  });
 
-      /*
-        Health check endpoint.
-        Returns a lightweight JSON response so Render knows the app is alive.
-        Also useful for monitoring services like uptimerobot.
-      */
-      if (url.pathname === "/health" || url.pathname === "/healthz") {
-        return new Response(
-          JSON.stringify({
-            status: "ok",
-            uptime: Math.floor((Date.now() - START_TIME) / 1000),
-            timestamp: new Date().toISOString(),
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-
-      /*
-        Root endpoint — quick HTML page to confirm the bot is running.
-        Useful when you open the Render URL in a browser.
-      */
-      if (url.pathname === "/") {
-        return new Response(
-          `<!DOCTYPE html>
+const LANDING_HTML = () => `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -68,17 +39,36 @@ export function startHttpServer() {
   <p>To interact with the bot, open Telegram and send a message.</p>
   <p><small>Uptime: ${Math.floor((Date.now() - START_TIME) / 1000)}s</small></p>
 </body>
-</html>`,
-          {
-            status: 200,
-            headers: { "Content-Type": "text/html" },
-          },
-        );
+</html>`;
+
+/*
+  Route registry mapping pathname patterns to their response factories.
+  No if/else chains — just a lookup table.
+*/
+const routes: Record<string, { body: () => string; contentType: string }> = {
+  "/health": { body: HEALTH_JSON, contentType: "application/json" },
+  "/healthz": { body: HEALTH_JSON, contentType: "application/json" },
+  "/": { body: LANDING_HTML, contentType: "text/html" },
+};
+
+/*
+  Start the HTTP server on the configured port.
+  Uses Bun's built-in server (no express/fastify needed).
+*/
+export function startHttpServer() {
+  const server = Bun.serve({
+    port: config.http.port,
+    fetch(request) {
+      const url = new URL(request.url);
+      const route = routes[url.pathname];
+
+      if (route) {
+        return new Response(route.body(), {
+          status: 200,
+          headers: { "Content-Type": route.contentType },
+        });
       }
 
-      /*
-        404 for everything else.
-      */
       return new Response("Not found", { status: 404 });
     },
   });

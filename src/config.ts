@@ -27,6 +27,10 @@ export const config = {
   http: {
     port: parseInt(process.env.PORT || "8080", 10),
   },
+  firecrawl: {
+    apiKey: process.env.FIRECRAWL_API_KEY || "",
+    baseUrl: "https://api.firecrawl.dev",
+  },
 };
 
 export function validateConfig(): string[] {
