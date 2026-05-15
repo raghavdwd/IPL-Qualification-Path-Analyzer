@@ -20,11 +20,19 @@ export const config = {
   session: {
     maxMessages: 20,
   },
+  mongo: {
+    uri: process.env.MONGO_URI || "",
+    dbName: "ipl_win_prediction",
+  },
+  http: {
+    port: parseInt(process.env.PORT || "8080", 10),
+  },
 };
 
 export function validateConfig(): string[] {
   const errors: string[] = [];
   if (!config.telegram.botToken) errors.push("TELEGRAM_BOT_TOKEN is not set");
   if (!config.openRouter.apiKey) errors.push("OPENROUTER_API_KEY is not set");
+  if (!config.mongo.uri) errors.push("MONGO_URI is not set");
   return errors;
 }

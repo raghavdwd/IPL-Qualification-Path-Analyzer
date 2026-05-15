@@ -3,35 +3,39 @@
 
   This file:
     1. Loads environment variables (Bun loads .env automatically)
-    2. Starts the Grammy bot with long polling
-    3. Sets up graceful shutdown so the bot stops cleanly
+    2. Starts a lightweight HTTP server for Render health checks
+    3. Starts the Grammy bot with MongoDB-backed sessions
+    4. Sets up graceful shutdown so connections close cleanly
 
   Usage:
     bun run index.ts
 */
 
 import { logger } from "./src/utils/logger";
-import { startBot } from "./src/telegram/bot";
+import { startHttpServer } from "./src/http";
+import { startBot, disconnectDb } from "./src/telegram/bot";
 
 /*
   Graceful shutdown handler.
-  When the user presses Ctrl+C, we log a message and exit cleanly.
-  Without this, the bot would just crash with no visible message.
+  Closes the MongoDB connection before exiting so we don't
+  leave hanging connections on the database server.
 */
-process.on("SIGINT", () => {
+async function shutdown(): Promise<void> {
   logger.log("\nShutting down bot...");
+  await disconnectDb();
   process.exit(0);
-});
+}
 
-process.on("SIGTERM", () => {
-  logger.log("\nShutting down bot...");
-  process.exit(0);
-});
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 /*
-  Start the bot. The startBot function handles the rest.
-  If it throws during initialization, we log the error and exit.
+  Start both servers:
+    - HTTP server for Render health checks (this must bind first so Render knows we're up)
+    - Telegram bot with long polling
 */
+startHttpServer();
+
 startBot().catch((error) => {
   logger.error("Failed to start bot:", error);
   process.exit(1);

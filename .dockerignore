@@ -1,0 +1,19 @@
+# Environment files — never ship secrets into a container image
+.env
+.env.*
+!.env.example
+
+# Data directory — local cache that gets rebuilt
+data/
+
+# Git history — not needed at runtime
+.git/
+.gitignore
+
+# Node metadata — we use Bun, not Node
+node_modules/
+
+# IDE and OS junk
+.DS_Store
+*.swp
+*.swo

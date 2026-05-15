@@ -1,19 +1,22 @@
 /*
-  Simple in-memory conversation session manager.
+  Conversation session manager backed by MongoDB instead of in-memory storage.
 
-  Why in-memory and not a database:
-    - No setup required (no Postgres/Redis)
-    - Stateless is not practical here because the LLM needs conversation context
-    - For a bot used by a small group of people, memory is perfectly fine
+  Benefits over the old in-memory Map:
+    - Conversations survive bot restarts
+    - Multiple bot instances can share the same session data
+    - No memory leaks from abandoned chats
 
-  How it works:
-    - Each Telegram chat gets its own array of messages
-    - When the array exceeds maxMessages, old messages are pruned from the front
-    - System prompt is always at position 0 and is never pruned
-    - The whole thing resets when the bot restarts (acceptable for this scale)
+  Each chat gets its own document in the "sessions" collection.
+  The system prompt is always at messages[0] and is never pruned.
+  Old messages beyond maxMessages are trimmed from the front (after the system prompt).
 */
 
 import type { LlmMessage } from "../utils/llm";
+import {
+  getSessionMessages,
+  saveSessionMessages,
+  deleteSession,
+} from "../utils/db";
 import { config } from "../config";
 
 const SYSTEM_PROMPT: LlmMessage = {
@@ -41,48 +44,55 @@ const SYSTEM_PROMPT: LlmMessage = {
 };
 
 export class SessionManager {
-  private sessions: Map<number, LlmMessage[]> = new Map();
-
   /*
-    Get or create the message history for a given Telegram chat.
-    The system prompt is always at index 0.
+    Retrieve the message history for a given Telegram chat from MongoDB.
+    If no session exists, creates one with just the system prompt and persists it.
   */
-  getMessages(chatId: number): LlmMessage[] {
-    let messages = this.sessions.get(chatId);
-    if (!messages) {
-      messages = [SYSTEM_PROMPT];
-      this.sessions.set(chatId, messages);
-    }
-    return messages;
+  async getMessages(chatId: number): Promise<LlmMessage[]> {
+    const stored = await getSessionMessages(chatId);
+    if (stored) return stored;
+
+    /*
+      No session found in the database — this is a first-time user or a reset chat.
+      Initialize with the system prompt and save immediately so subsequent calls
+      don't race to create the same session.
+    */
+    const initial = [SYSTEM_PROMPT];
+    await saveSessionMessages(chatId, initial);
+    return initial;
   }
 
   /*
-    Add a new message to the chat's history.
-    If adding this message would exceed maxMessages (after the system prompt),
-    we remove the oldest user/assistant/tool messages to make room.
+    Append a message to the chat's history and persist to MongoDB.
+    Trims old messages beyond maxMessages (keeping the system prompt at index 0).
   */
-  addMessage(chatId: number, message: LlmMessage): void {
-    const messages = this.getMessages(chatId);
+  async addMessage(chatId: number, message: LlmMessage): Promise<void> {
+    const messages = await this.getMessages(chatId);
     messages.push(message);
 
     /*
-      Keep the system prompt (index 0) and at most maxMessages of history.
-      Prune from index 1 onward.
+      Prune excess messages while always keeping the system prompt.
+      If we have more than maxMessages + 1 (the +1 is the system prompt),
+      remove the oldest user/assistant/tool messages from index 1 onward.
     */
     if (messages.length > config.session.maxMessages + 1) {
       const excess = messages.length - (config.session.maxMessages + 1);
-      /*
-        Remove excess messages, but always keep the system prompt at [0].
-        We splice from index 1, removing 'excess' items.
-      */
       messages.splice(1, excess);
     }
+
+    await saveSessionMessages(chatId, messages);
   }
 
   /*
-    Reset a chat's history (e.g. if the user types /reset).
+    Wipe the chat's history and replace it with a fresh system prompt.
+    Called when the user types /reset.
   */
-  resetChat(chatId: number): void {
-    this.sessions.set(chatId, [SYSTEM_PROMPT]);
+  async resetChat(chatId: number): Promise<void> {
+    await deleteSession(chatId);
+    /*
+      getMessages on the next call will create a fresh session with the system prompt.
+      We pre-save here so getMessages doesn't need special empty-handling logic.
+    */
+    await saveSessionMessages(chatId, [SYSTEM_PROMPT]);
   }
 }

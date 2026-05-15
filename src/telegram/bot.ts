@@ -7,14 +7,16 @@
     - Clean middleware API
 
   The bot:
-    1. Listens for /start and /reset commands
-    2. Treats all other messages as questions for the LLM
-    3. Passes each message through the tool-calling LLM loop
-    4. Streams the response back to the user
+    1. Connects to MongoDB at startup for persistent session storage
+    2. Listens for /start and /reset commands
+    3. Treats all other messages as questions for the LLM
+    4. Passes each message through the tool-calling LLM loop
+    5. Sends the response back to the user
 */
 
 import { Bot, GrammyError, HttpError } from "grammy";
 import { config, validateConfig } from "../config";
+import { connectDb, disconnectDb } from "../utils/db";
 import { chatLoop } from "../utils/llm";
 import { logger } from "../utils/logger";
 import { toolDefinitions } from "../tools/definitions";
@@ -48,7 +50,7 @@ let totalApiHits = 0;
   /start command: welcome message with instructions.
 */
 bot.command("start", async (ctx) => {
-  sessions.resetChat(ctx.chat.id);
+  await sessions.resetChat(ctx.chat.id);
   await ctx.reply(
     "🏏 *IPL Qualification Path Analyzer* 🏏\n\n" +
     "Ask me anything about IPL team qualification chances!\n\n" +
@@ -67,7 +69,7 @@ bot.command("start", async (ctx) => {
   /reset command: clear conversation history for this chat.
 */
 bot.command("reset", async (ctx) => {
-  sessions.resetChat(ctx.chat.id);
+  await sessions.resetChat(ctx.chat.id);
   await ctx.reply("Conversation reset. Ask me a new question!");
 });
 
@@ -83,20 +85,19 @@ bot.on("message:text", async (ctx) => {
   /*
     Show typing indicator. Grammy sends this automatically
     and Telegram shows "bot is typing..." to the user.
-    We need to hold the context open while processing.
   */
   await ctx.api.sendChatAction(chatId, "typing");
 
   /*
-    Add the user's message to the session history.
+    Add the user's message to the session history in MongoDB.
   */
-  sessions.addMessage(chatId, {
+  await sessions.addMessage(chatId, {
     role: "user",
     content: userText,
   });
 
   try {
-    const messages = sessions.getMessages(chatId);
+    const messages = await sessions.getMessages(chatId);
 
     /*
       Track tool calls for the API usage message.
@@ -114,9 +115,9 @@ bot.on("message:text", async (ctx) => {
     );
 
     /*
-      Add the assistant's response to the session history.
+      Add the assistant's response to the session history in MongoDB.
     */
-    sessions.addMessage(chatId, {
+    await sessions.addMessage(chatId, {
       role: "assistant",
       content: response,
     });
@@ -161,11 +162,17 @@ bot.catch((err) => {
 });
 
 /*
-  Start the bot with long polling.
-  No webhook needed for development / small-scale usage.
+  Start the bot:
+    1. Connect to MongoDB
+    2. Start long polling for Telegram updates
 */
 export async function startBot(): Promise<void> {
   logger.log("Starting IPL Qualification Path Analyzer bot...");
+
+  logger.log("  Connecting to MongoDB...");
+  await connectDb();
+  logger.log("  MongoDB connected.");
+
   logger.log(`  Model: ${config.openRouter.model}`);
   logger.log("  Polling for updates... (Ctrl+C to stop)");
 
@@ -175,3 +182,8 @@ export async function startBot(): Promise<void> {
     },
   });
 }
+
+/*
+  Exported for graceful shutdown from index.ts.
+*/
+export { disconnectDb };
