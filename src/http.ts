@@ -4,12 +4,13 @@
   Without this, Render would kill the container thinking it failed to start.
 
   Endpoints:
-    GET /        — simple HTML landing page
-    GET /health  — JSON health check (used by Render's health monitoring)
+    GET /           — simple HTML landing page
+    GET /health     — JSON health check (used by Render's health monitoring)
+    GET /app/logs   — recent logs (last 60 min, newest first)
 */
 
 import { config } from "./config";
-import { logger } from "./utils/logger";
+import { logger, readRecentLogs } from "./utils/logger";
 
 const START_TIME = Date.now();
 
@@ -41,6 +42,33 @@ const LANDING_HTML = () => `<!DOCTYPE html>
 </body>
 </html>`;
 
+const LOGS_HTML = () => {
+  const lines = readRecentLogs();
+  const rows = lines === "No logs yet." || lines === "No logs in the last 60 minutes." || lines === "Failed to read logs."
+    ? `<p style="color: #888;">${lines}</p>`
+    : `<pre style="font-size: 13px; line-height: 1.5;">${lines}</pre>`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bot Logs — IPL Win Prediction</title>
+  <style>
+    body { font-family: monospace; max-width: 960px; margin: 20px auto; padding: 0 20px; background: #0d1117; color: #c9d1d9; }
+    h1 { color: #58a6ff; font-family: sans-serif; }
+    pre { white-space: pre-wrap; word-break: break-all; }
+    .muted { color: #484f58; }
+  </style>
+</head>
+<body>
+  <h1>📋 Logs (last 60 min)</h1>
+  <p class="muted">Newest first</p>
+  ${rows}
+</body>
+</html>`;
+};
+
 /*
   Route registry mapping pathname patterns to their response factories.
 */
@@ -48,6 +76,7 @@ const routes: Record<string, { body: () => string; contentType: string }> = {
   "/health": { body: HEALTH_JSON, contentType: "application/json" },
   "/healthz": { body: HEALTH_JSON, contentType: "application/json" },
   "/": { body: LANDING_HTML, contentType: "text/html" },
+  "/app/logs": { body: LOGS_HTML, contentType: "text/html" },
 };
 
 /*

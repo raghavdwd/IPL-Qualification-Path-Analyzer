@@ -7,4 +7,5 @@ export const env = {
   port: Bun.env.PORT || "8080",
   firecrawlApiKey: Bun.env.FIRECRAWL_API_KEY || "",
   nodeEnv: Bun.env.NODE_ENV || "",
+  LOG_FILE_PATH: Bun.env.LOG_FILE_PATH || "logs/app.log",
 };
